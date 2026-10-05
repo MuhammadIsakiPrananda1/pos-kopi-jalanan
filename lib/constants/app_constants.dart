@@ -3,7 +3,7 @@ class AppConstants {
 
   static const String appName = 'KOPI JALANAN GANK';
   static const String appTagline = 'Kasir Digital Kopi Jalanan';
-  static const String appVersion = '1.0.0';
+  static const String appVersion = '1.2.0';
   static const String developer = 'NEVERLAND STUDIO';
 
   // Receipt strings

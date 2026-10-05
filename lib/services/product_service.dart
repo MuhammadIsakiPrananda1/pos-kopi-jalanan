@@ -11,4 +11,6 @@ class ProductService {
   Future<void> updateProduct(Product product) => _db.updateProduct(product);
 
   Future<void> deleteProduct(String id) => _db.deleteProduct(id);
+
+  Future<void> clearAllProducts() => _db.clearAllProducts();
 }

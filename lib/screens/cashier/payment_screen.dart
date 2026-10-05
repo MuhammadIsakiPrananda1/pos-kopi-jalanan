@@ -1,17 +1,32 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import '../../constants/app_colors.dart';
-import '../../constants/app_text_styles.dart';
-import '../../constants/app_constants.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:uuid/uuid.dart';
 import '../../models/transaction.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/product_provider.dart';
 import '../../providers/transaction_provider.dart';
+import '../../providers/finance_provider.dart';
+import '../../providers/printer_provider.dart';
+import '../../providers/settings_provider.dart';
 import '../../services/audio_service.dart';
-import '../../services/print_service.dart';
-import '../../widgets/custom_button.dart';
+import '../../services/receipt_service.dart';
+
+// ── Design Tokens ────────────────────────────────────────────────────────────
+const _bgDark       = Color(0xFF09090B);
+const _surfaceDark  = Color(0xFF141417);
+const _cardDark     = Color(0xFF18181B);
+const _borderDark   = Color(0xFF27272A);
+const _textMuted    = Color(0xFF71717A);
+const _textSub      = Color(0xFFA1A1AA);
+const _textMain     = Color(0xFFFAFAFA);
+const _greenSuccess = Color(0xFF22C55E);
+const _redError     = Color(0xFFEF4444);
+// ─────────────────────────────────────────────────────────────────────────────
+
+TextStyle _font(double size, FontWeight weight, Color color, {double letterSpacing = 0}) =>
+    GoogleFonts.quicksand(fontSize: size, fontWeight: weight, color: color, letterSpacing: letterSpacing);
 
 class PaymentScreen extends StatefulWidget {
   const PaymentScreen({super.key});
@@ -22,128 +37,131 @@ class PaymentScreen extends StatefulWidget {
 
 class _PaymentScreenState extends State<PaymentScreen>
     with SingleTickerProviderStateMixin {
-  final _cashController = TextEditingController();
-  final _focusNode = FocusNode();
   bool _isProcessing = false;
-  double _cashReceived = 0;
-  late AnimationController _successController;
-  late Animation<double> _successScale;
   bool _showSuccess = false;
+  late final AnimationController _animController;
+  late final Animation<double> _scaleAnimation;
+  Transaction? _savedTransaction;
 
   @override
   void initState() {
     super.initState();
-    _successController = AnimationController(
+    _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 500),
+      duration: const Duration(milliseconds: 400),
     );
-    _successScale = CurvedAnimation(
-      parent: _successController,
-      curve: Curves.elasticOut,
+    _scaleAnimation = CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeOutBack,
     );
-
-    _cashController.addListener(() {
-      final raw = _cashController.text.replaceAll(RegExp(r'[^0-9]'), '');
-      setState(() => _cashReceived = double.tryParse(raw) ?? 0);
-    });
   }
 
   @override
   void dispose() {
-    _cashController.dispose();
-    _focusNode.dispose();
-    _successController.dispose();
+    _animController.dispose();
     super.dispose();
   }
 
-  double get _total => context.read<CartProvider>().total;
-  double get _change => (_cashReceived - _total).clamp(0, double.infinity);
-  bool get _canPay => _cashReceived >= _total;
+  Future<void> _handlePayment() async {
+    if (_isProcessing) return;
+    setState(() => _isProcessing = true);
 
-  void _setExactAmount() {
-    final total = _total;
-    final formatter = NumberFormat.currency(locale: 'id', symbol: '', decimalDigits: 0);
-    _cashController.text = formatter.format(total).trim();
-    setState(() => _cashReceived = total);
+    try {
+      final cart = context.read<CartProvider>();
+      final txnProvider = context.read<TransactionProvider>();
+      final total = cart.total;
+
+      final String txnId = const Uuid().v4();
+      final transaction = Transaction(
+        id: txnId,
+        total: total,
+        cashReceived: total,
+        change: 0,
+        items: cart.toTransactionItems(txnId),
+      );
+
+      _savedTransaction = transaction;
+      await txnProvider.saveTransaction(transaction);
+
+      if (mounted) {
+        context.read<ProductProvider>().loadProducts();
+        context.read<FinanceProvider>().loadRecords();
+        context.read<TransactionProvider>().loadDailySummary();
+        context.read<TransactionProvider>().loadReportData(30);
+      }
+
+      await AudioService.instance.playSuccess();
+
+      if (mounted) {
+        cart.clear();
+        setState(() {
+          _isProcessing = false;
+          _showSuccess = true;
+        });
+        _animController.forward();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isProcessing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal menyimpan transaksi: $e', style: _font(12, FontWeight.w500, _textMain)),
+            backgroundColor: _cardDark,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: const BorderSide(color: _redError),
+            ),
+          ),
+        );
+      }
+    }
   }
 
-  void _addQuickAmount(double amount) {
-    final current = _cashReceived;
-    final total = current + amount;
-    final formatter = NumberFormat.currency(locale: 'id', symbol: '', decimalDigits: 0);
-    _cashController.text = formatter.format(total).trim();
-    setState(() => _cashReceived = total);
-  }
+  Future<void> _handlePrintReceipt() async {
+    if (_savedTransaction == null) return;
 
-  Future<void> _processPayment() async {
-    if (!_canPay) {
+    final printer = context.read<PrinterProvider>();
+    final settings = context.read<SettingsProvider>();
+
+    if (!printer.isConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Uang tidak cukup!'),
-          backgroundColor: AppColors.error,
+          content: Text('Printer belum terhubung. Silakan atur di menu Printer.',
+              style: _font(12, FontWeight.w500, _textMain)),
+          backgroundColor: _cardDark,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       );
       return;
     }
 
-    setState(() => _isProcessing = true);
-
     try {
-      final cart = context.read<CartProvider>();
-      final txnProv = context.read<TransactionProvider>();
-
-      final transaction = Transaction(
-        total: cart.total,
-        cashReceived: _cashReceived,
-        change: _change,
-        items: [],
+      final bytes = await ReceiptService.generateReceiptBytes(
+        orderId: _savedTransaction!.id.substring(0, 8).toUpperCase(),
+        items: _savedTransaction!.items,
+        subtotal: _savedTransaction!.total,
+        discount: 0,
+        total: _savedTransaction!.total,
+        cash: _savedTransaction!.cashReceived,
+        change: _savedTransaction!.change,
+        storeName: settings.storeName == 'Belum diatur' ? '' : settings.storeName,
+        storeAddress: settings.storeAddress == 'Belum diatur' ? '' : settings.storeAddress,
+        storePhone: settings.storePhone == 'Belum diatur' ? '' : settings.storePhone,
+        storeSlogan: settings.storeSlogan == 'Belum diatur' ? '' : settings.storeSlogan,
+        receiptHeader: settings.receiptHeader == 'Belum diatur' ? '' : settings.receiptHeader,
+        receiptFooter: settings.receiptFooter == 'Belum diatur' ? '' : settings.receiptFooter,
+        paperSizeStr: settings.paperSize,
       );
-
-      final finalTransaction = Transaction(
-        id: transaction.id,
-        total: transaction.total,
-        cashReceived: transaction.cashReceived,
-        change: transaction.change,
-        items: cart.toTransactionItems(transaction.id),
-      );
-
-      await txnProv.saveTransaction(finalTransaction);
-      
-      // Update stok di UI
-      if (mounted) {
-        context.read<ProductProvider>().loadProducts();
-      }
-      await AudioService.instance.playSuccess();
-
-      // Try print
-      if (PrintService.instance.isConnected) {
-        await PrintService.instance.printReceipt(finalTransaction);
-      }
-
-      cart.clear();
-
-      if (mounted) {
-        setState(() {
-          _showSuccess = true;
-          _isProcessing = false;
-        });
-        _successController.forward();
-
-        await Future.delayed(const Duration(milliseconds: 1800));
-        if (mounted) {
-          Navigator.of(context)
-              .popUntil((route) => route.isFirst || route.settings.name == '/home');
-        }
-      }
+      await printer.printReceipt(bytes);
     } catch (e) {
-      setState(() => _isProcessing = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Gagal menyimpan: $e'),
-            backgroundColor: AppColors.error,
+            content: Text('Gagal mencetak struk: $e', style: _font(12, FontWeight.w500, _textMain)),
+            backgroundColor: _cardDark,
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
@@ -156,132 +174,203 @@ class _PaymentScreenState extends State<PaymentScreen>
     final cart = context.watch<CartProvider>();
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: Text('PEMBAYARAN', style: AppTextStyles.appBarTitle),
-        backgroundColor: AppColors.surface,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: Stack(
-        children: [
-          SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      backgroundColor: _bgDark,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Column(
               children: [
-                // Order Summary
-                _buildOrderSummary(cart, nf),
-                const SizedBox(height: 16),
-
-                // Cash Input Section
-                _buildCashInput(nf),
-                const SizedBox(height: 12),
-
-                // Change Display
-                if (_cashReceived > 0) _buildChangeDisplay(nf),
-                const SizedBox(height: 100), // Spasi bawah agar tidak mentok
+                _buildHeader(cart),
+                Expanded(
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(18, 4, 18, 120),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildReceiptCard(cart, nf),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
-          ),
 
-          // Success overlay
-          if (_showSuccess) _buildSuccessOverlay(nf),
-        ],
-      ),
-      bottomNavigationBar: Container(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-        decoration: BoxDecoration(
-          color: AppColors.background,
-          border: Border(top: BorderSide(color: AppColors.divider.withValues(alpha: 0.1))),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Printer Status
-            Text(
-              PrintService.instance.isConnected
-                  ? 'Printer terhubung'
-                  : 'Printer tidak terhubung',
-              style: AppTextStyles.bodySmall.copyWith(
-                color: PrintService.instance.isConnected
-                    ? AppColors.success
-                    : AppColors.textHint,
-                fontSize: 10,
-              ),
-            ),
-            const SizedBox(height: 8),
-            // Centered Small Button
-            Center(
-              child: SizedBox(
-                width: 160,
-                child: CustomButton(
-                  label: 'BAYAR',
-                  icon: Icons.payments_rounded,
-                  onPressed: _canPay ? _processPayment : null,
-                  isLoading: _isProcessing,
-                  backgroundColor:
-                      _canPay ? AppColors.accent : AppColors.surfaceLight,
-                  textColor:
-                      _canPay ? AppColors.background : AppColors.textSecondary,
-                  height: 46,
+            // Bottom Action Bar
+            if (!_showSuccess)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
+                  decoration: const BoxDecoration(
+                    color: _surfaceDark,
+                    border: Border(top: BorderSide(color: _borderDark, width: 1)),
+                  ),
+                  child: SizedBox(
+                    height: 46,
+                    child: ElevatedButton(
+                      onPressed: _isProcessing || cart.isEmpty ? null : _handlePayment,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _textMain,
+                        foregroundColor: _bgDark,
+                        disabledBackgroundColor: _cardDark,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: _isProcessing
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: _bgDark,
+                              ),
+                            )
+                          : Text(
+                              'Selesaikan Pembayaran',
+                              style: _font(13, FontWeight.w700, _bgDark),
+                            ),
+                    ),
+                  ),
                 ),
               ),
-            ),
+
+            // Success Overlay
+            if (_showSuccess) _buildSuccessOverlay(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildOrderSummary(CartProvider cart, NumberFormat nf) {
+  // ── Header (konsisten dengan Dashboard, Stok, & Kasir POS) ─────────────────
+  Widget _buildHeader(CartProvider cart) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 8, 16, 8),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(
+              Icons.arrow_back_ios_new_rounded,
+              color: _textSub,
+              size: 18,
+            ),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: _greenSuccess,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Konfirmasi Bayar',
+                      style: _font(
+                        15,
+                        FontWeight.w700,
+                        _textMain,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Padding(
+                  padding: const EdgeInsets.only(left: 16),
+                  child: Text(
+                    '${cart.itemCount} item • periksa pesanan sebelum dibayar',
+                    style: _font(10, FontWeight.w500, _textMuted),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReceiptCard(CartProvider cart, NumberFormat nf) {
+    final now = DateTime.now();
+    final dateStr = DateFormat('dd MMM yyyy, HH:mm', 'id').format(now);
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.divider.withValues(alpha: 0.5)),
+        color: _surfaceDark,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _borderDark, width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('DETAIL PESANAN',
-              style: AppTextStyles.bodySmall.copyWith(
-                  fontWeight: FontWeight.bold, letterSpacing: 1, color: AppColors.textSecondary)),
-          const SizedBox(height: 12),
-          ...cart.items.map((item) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
-                  children: [
-                    Expanded(
-                        child: Text(item.product.name,
-                            style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w500))),
-                    Text('x${item.quantity}',
-                        style: AppTextStyles.bodySmall.copyWith(fontWeight: FontWeight.bold)),
-                    const SizedBox(width: 16),
-                    Text(nf.format(item.subtotal),
-                        style: AppTextStyles.bodyMedium),
-                  ],
-                ),
-              )),
-          const Divider(color: AppColors.divider, height: 24),
+          // Header info
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('TOTAL', style: AppTextStyles.titleMedium),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerRight,
-                  child: Text(
-                    nf.format(cart.total),
-                    style: AppTextStyles.price.copyWith(fontSize: 18),
-                  ),
+              Text('Ringkasan Transaksi', style: _font(13.5, FontWeight.w700, _textMain)),
+              Text(dateStr, style: _font(10, FontWeight.w400, _textMuted)),
+            ],
+          ),
+          const SizedBox(height: 14),
+          const Divider(height: 1, color: _borderDark),
+          const SizedBox(height: 14),
+
+          // Items
+          ...cart.items.map((item) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.product.name,
+                            style: _font(12, FontWeight.w500, _textMain),
+                          ),
+                          const SizedBox(height: 1),
+                          Text(
+                            '${item.quantity} x ${nf.format(item.product.price)}',
+                            style: _font(10, FontWeight.w400, _textMuted),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Text(
+                      nf.format(item.subtotal),
+                      style: _font(12, FontWeight.w600, _textMain),
+                    ),
+                  ],
                 ),
+              )),
+
+          const SizedBox(height: 8),
+          const Divider(height: 1, color: _borderDark),
+          const SizedBox(height: 14),
+
+          // Total row
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Total Tagihan', style: _font(12, FontWeight.w500, _textSub)),
+              Text(
+                nf.format(cart.total),
+                style: _font(17, FontWeight.w800, _textMain, letterSpacing: -0.3),
               ),
             ],
           ),
@@ -290,140 +379,117 @@ class _PaymentScreenState extends State<PaymentScreen>
     );
   }
 
-  Widget _buildCashInput(NumberFormat nf) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Uang Diterima', style: AppTextStyles.titleMedium),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _cashController,
-          focusNode: _focusNode,
-          keyboardType: TextInputType.number,
-          inputFormatters: [
-            FilteringTextInputFormatter.digitsOnly,
-            _CurrencyInputFormatter(),
-          ],
-          style: AppTextStyles.price.copyWith(fontSize: 18),
-          decoration: InputDecoration(
-            contentPadding: const EdgeInsets.symmetric(vertical: 12),
-            prefixIcon: const Padding(
-              padding: EdgeInsets.only(left: 16, right: 8),
-              child: Text(
-                'Rp',
-                style: TextStyle(
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
-              ),
-            ),
-            prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
-            hintText: '0',
-            hintStyle: AppTextStyles.price.copyWith(color: AppColors.textHint, fontSize: 18),
-          ),
-        ),
-      ],
-    );
-  }
-
-
-  Widget _buildChangeDisplay(NumberFormat nf) {
-    return AnimatedContainer(
-      duration: AppConstants.animNormal,
-      padding: const EdgeInsets.all(AppConstants.paddingM),
-      decoration: BoxDecoration(
-        color: _canPay
-            ? AppColors.success.withValues(alpha: 0.1)
-            : AppColors.error.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(AppConstants.radiusL),
-        border: Border.all(
-          color: _canPay
-              ? AppColors.success.withValues(alpha: 0.4)
-              : AppColors.error.withValues(alpha: 0.4),
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            _canPay ? 'Kembalian' : 'Kurang',
-            style: AppTextStyles.titleMedium.copyWith(
-              color: _canPay ? AppColors.success : AppColors.error,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Flexible(
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerRight,
-              child: Text(
-                nf.format(_canPay ? _change : _total - _cashReceived),
-                style: AppTextStyles.priceLarge.copyWith(
-                  color: _canPay ? AppColors.success : AppColors.error,
-                  fontSize: 18,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSuccessOverlay(NumberFormat nf) {
+  Widget _buildSuccessOverlay() {
     return Container(
-      color: AppColors.background.withValues(alpha: 0.9),
+      color: Colors.black.withValues(alpha: 0.85),
       child: Center(
         child: ScaleTransition(
-          scale: _successScale,
+          scale: _scaleAnimation,
           child: Container(
-            margin: const EdgeInsets.all(AppConstants.paddingXL),
-            padding: const EdgeInsets.all(AppConstants.paddingXL),
+            margin: const EdgeInsets.symmetric(horizontal: 24),
+            padding: const EdgeInsets.fromLTRB(22, 28, 22, 22),
             decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(AppConstants.radiusXL),
-              border: Border.all(color: AppColors.success.withValues(alpha: 0.4)),
+              color: _surfaceDark,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: _borderDark, width: 1),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.6),
+                  blurRadius: 30,
+                  offset: const Offset(0, 10),
+                ),
+              ],
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.check_circle_rounded,
-                    color: AppColors.success, size: 64),
-                const SizedBox(height: 20),
-                Text('PEMBAYARAN BERHASIL',
-                    style: AppTextStyles.titleLarge.copyWith(letterSpacing: 1)),
-                const SizedBox(height: 24),
+                // Clean check icon
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  width: 52,
+                  height: 52,
                   decoration: BoxDecoration(
-                    color: AppColors.background,
-                    borderRadius: BorderRadius.circular(12),
+                    color: _greenSuccess.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: _greenSuccess.withValues(alpha: 0.3),
+                      width: 1,
+                    ),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('KEMBALIAN', style: AppTextStyles.bodySmall),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerRight,
-                          child: Text(
-                            nf.format(_change),
-                            style: AppTextStyles.priceLarge.copyWith(
-                                color: AppColors.success, fontSize: 20),
+                  child: const Icon(
+                    Icons.check_rounded,
+                    color: _greenSuccess,
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Transaksi Berhasil',
+                  style: _font(15, FontWeight.w700, _textMain),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Pesanan telah dicatat dalam laporan kasir.',
+                  textAlign: TextAlign.center,
+                  style: _font(11.5, FontWeight.w400, _textSub),
+                ),
+                const SizedBox(height: 22),
+                const Divider(height: 1, color: _borderDark),
+                const SizedBox(height: 18),
+
+                // Print receipt button
+                Consumer<PrinterProvider>(
+                  builder: (context, printer, _) => SizedBox(
+                    width: double.infinity,
+                    height: 42,
+                    child: ElevatedButton.icon(
+                      onPressed: _handlePrintReceipt,
+                      icon: Icon(
+                        printer.isConnected ? Icons.print_rounded : Icons.print_disabled_outlined,
+                        size: 15,
+                      ),
+                      label: Text(
+                        printer.isConnected ? 'Cetak Struk' : 'Printer Tidak Terhubung',
+                        style: _font(12, FontWeight.w600, printer.isConnected ? _bgDark : _textMuted),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: printer.isConnected ? _textMain : _cardDark,
+                        foregroundColor: printer.isConnected ? _bgDark : _textMuted,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          side: BorderSide(
+                            color: printer.isConnected ? _textMain : _borderDark,
                           ),
                         ),
                       ),
-                    ],
+                    ),
                   ),
                 ),
-                const SizedBox(height: 24),
-                Text(
-                  'Terima kasih atas kunjungan Anda',
-                  style: AppTextStyles.bodySmall,
-                  textAlign: TextAlign.center,
+
+                const SizedBox(height: 10),
+
+                // Back / New order button
+                SizedBox(
+                  width: double.infinity,
+                  height: 42,
+                  child: OutlinedButton(
+                    onPressed: () {
+                      Navigator.of(context).popUntil(
+                        (route) => route.isFirst || route.settings.name == '/home',
+                      );
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _textMain,
+                      side: const BorderSide(color: _borderDark),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: Text(
+                      'Kembali ke Kasir',
+                      style: _font(12, FontWeight.w600, _textMain),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -431,21 +497,5 @@ class _PaymentScreenState extends State<PaymentScreen>
         ),
       ),
     );
-  }
-}
-
-class _CurrencyInputFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-      TextEditingValue oldValue, TextEditingValue newValue) {
-    if (newValue.text.isEmpty) return newValue;
-
-    final double value = double.parse(newValue.text);
-    final formatter = NumberFormat.currency(locale: 'id', symbol: '', decimalDigits: 0);
-    final String newText = formatter.format(value).trim();
-
-    return newValue.copyWith(
-        text: newText,
-        selection: TextSelection.collapsed(offset: newText.length));
   }
 }

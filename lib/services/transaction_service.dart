@@ -19,4 +19,9 @@ class TransactionService {
 
   Future<List<Map<String, dynamic>>> getDailyRevenue(int days) =>
       _db.getDailyRevenue(days);
+
+  Future<List<Map<String, dynamic>>> getDailySoldItems({int? days}) =>
+      _db.getDailySoldItems(days: days);
+
+  Future<void> clearAllTransactions() => _db.clearAllTransactions();
 }

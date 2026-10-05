@@ -9,6 +9,7 @@ class TransactionProvider extends ChangeNotifier {
   Map<String, dynamic> _dailySummary = {};
   List<Map<String, dynamic>> _topProducts = [];
   List<Map<String, dynamic>> _dailyRevenue = [];
+  List<Map<String, dynamic>> _dailySoldItems = [];
 
   bool _isLoading = false;
   String? _error;
@@ -17,6 +18,7 @@ class TransactionProvider extends ChangeNotifier {
   Map<String, dynamic> get dailySummary => _dailySummary;
   List<Map<String, dynamic>> get topProducts => _topProducts;
   List<Map<String, dynamic>> get dailyRevenue => _dailyRevenue;
+  List<Map<String, dynamic>> get dailySoldItems => _dailySoldItems;
   bool get isLoading => _isLoading;
   String? get error => _error;
 
@@ -29,7 +31,7 @@ class TransactionProvider extends ChangeNotifier {
     try {
       await _service.saveTransaction(transaction);
       await loadDailySummary();
-      await loadReportData(7); // Refresh charts and top products
+      await loadReportData(30); // Refresh charts and top products
     } catch (e) {
       _error = 'Gagal menyimpan transaksi: $e';
       notifyListeners();
@@ -64,6 +66,7 @@ class TransactionProvider extends ChangeNotifier {
     try {
       _topProducts = await _service.getTopProducts(days);
       _dailyRevenue = await _service.getDailyRevenue(days);
+      _dailySoldItems = await _service.getDailySoldItems(days: days);
     } catch (e) {
       _error = 'Gagal memuat laporan: $e';
     } finally {
@@ -75,5 +78,23 @@ class TransactionProvider extends ChangeNotifier {
   void clearError() {
     _error = null;
     notifyListeners();
+  }
+
+  Future<void> clearHistory() async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      await _service.clearAllTransactions();
+      _transactions = [];
+      _dailySummary = {};
+      _topProducts = [];
+      _dailyRevenue = [];
+      _dailySoldItems = [];
+    } catch (e) {
+      _error = 'Gagal menghapus riwayat: $e';
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 }

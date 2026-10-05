@@ -68,4 +68,18 @@ class ProductProvider extends ChangeNotifier {
     _error = null;
     notifyListeners();
   }
+
+  Future<void> clearProducts() async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      await _service.clearAllProducts();
+      _products = [];
+    } catch (e) {
+      _error = 'Gagal menghapus semua produk: $e';
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
 }

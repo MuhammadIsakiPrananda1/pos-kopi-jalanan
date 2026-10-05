@@ -35,7 +35,7 @@ class _ReportsAndFinanceScreenState extends State<ReportsAndFinanceScreen> with 
         elevation: 0,
         title: Text(
           'Laporan & Keuangan',
-          style: GoogleFonts.poppins(
+          style: GoogleFonts.quicksand(
             fontWeight: FontWeight.w600,
             color: AppColors.textPrimary,
           ),
@@ -67,7 +67,7 @@ class _ReportsAndFinanceScreenState extends State<ReportsAndFinanceScreen> with 
                 indicatorSize: TabBarIndicatorSize.tab,
                 labelColor: AppColors.background,
                 unselectedLabelColor: AppColors.textSecondary,
-                labelStyle: GoogleFonts.poppins(
+                labelStyle: GoogleFonts.quicksand(
                     fontWeight: FontWeight.bold, fontSize: 13),
                 dividerColor: Colors.transparent,
                 tabs: const [

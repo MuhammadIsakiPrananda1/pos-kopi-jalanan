@@ -1,77 +1,107 @@
-# ☕ KOPI JALANAN GANK - Aplikasi Kasir Digital Premium
+# ☕ KOPI JALANAN GANK — Aplikasi Kasir Digital Premium
 
 ![Logo](assets/images/logo.png)
 
-Aplikasi Kasir Digital (Point of Sale) berperforma tinggi, minimalis, dan premium yang dirancang khusus untuk **KOPI JALANAN GANK**. Dibangun dengan **Flutter**, aplikasi ini menawarkan pengalaman offline-first yang mulus dengan fokus pada kecepatan dan estetika modern.
+> **Dikembangkan oleh [Neverland Studio](https://github.com/MuhammadIsakiPrananda1) · Lisensi MIT**
+
+---
+
+## 📖 Tentang Aplikasi
+
+**KOPI JALANAN GANK POS** adalah aplikasi kasir digital (*Point of Sale*) yang dirancang khusus untuk kebutuhan operasional kedai kopi **KOPI JALANAN GANK**. Aplikasi ini dibangun dengan pendekatan **offline-first**, artinya seluruh proses transaksi, laporan, dan manajemen data berjalan sepenuhnya tanpa membutuhkan koneksi internet.
+
+Dengan antarmuka modern bergaya **dark theme glassmorphic**, aplikasi ini menggabungkan kecepatan, keandalan, dan estetika premium dalam satu paket yang ringan dan efisien untuk perangkat Android.
 
 ---
 
 ## ✨ Fitur Utama
 
-- **🚀 Antarmuka Kasir Cepat**: Proses checkout yang efisien dengan manajemen keranjang belanja real-time.
-- **📊 Analisis Lanjutan**: Laporan penjualan harian, mingguan, dan bulanan dengan grafik visual yang menarik.
-- **💰 Manajemen Keuangan**: Pencatatan pemasukan dan pengeluaran terintegrasi (Manual + Sinkronisasi Penjualan Otomatis).
-- **🖨️ Cetak Struk Thermal**: Dukungan penuh printer thermal Bluetooth untuk mencetak struk belanja.
-- **📦 Sistem Inventaris**: Manajemen produk dan kategori yang mudah digunakan.
-- **🎨 UI/UX Premium**: Desain tema gelap (Dark Theme) dengan sentuhan glassmorphic, animasi halus, dan tipografi profesional.
-- **📴 Offline-First**: Database SQLite yang andal memastikan fungsi aplikasi tetap berjalan tanpa koneksi internet.
+| Fitur | Deskripsi |
+|---|---|
+| 🚀 **Kasir Cepat** | Proses checkout efisien dengan manajemen keranjang belanja real-time |
+| 📊 **Analisis Penjualan** | Laporan harian, mingguan, dan bulanan dengan grafik visual interaktif |
+| 💰 **Manajemen Keuangan** | Pencatatan pemasukan & pengeluaran (manual + sinkronisasi otomatis dari penjualan) |
+| 🖨️ **Cetak Struk Thermal** | Dukungan printer thermal Bluetooth untuk mencetak struk belanja |
+| 📦 **Inventaris Produk** | Manajemen produk dan kategori yang mudah digunakan |
+| 🎨 **UI/UX Premium** | Dark theme glassmorphic, animasi halus, dan tipografi profesional |
+| 📴 **Offline-First** | Database SQLite lokal memastikan aplikasi berjalan tanpa internet |
 
 ---
 
-## 📸 Cuplikan Layar (Screenshots)
+## 🛠️ Bahasa Pemrograman & Teknologi
+
+Aplikasi ini dibangun menggunakan teknologi berikut:
+
+| Kategori | Teknologi |
+|---|---|
+| **Framework** | [Flutter](https://flutter.dev) |
+| **Bahasa Pemrograman** | [Dart](https://dart.dev) |
+| **Database** | [SQLite](https://sqlite.org) — penyimpanan data lokal pada perangkat |
+| **State Management** | [Provider](https://pub.dev/packages/provider) |
+| **Grafik & Chart** | [FL Chart](https://pub.dev/packages/fl_chart) |
+| **Tipografi** | [Google Fonts](https://fonts.google.com) |
+| **Printer** | [Print Bluetooth Thermal](https://pub.dev/packages/print_bluetooth_thermal) |
+
+> **Dart** adalah bahasa pemrograman utama yang digunakan bersama **Flutter** (framework dari Google) untuk membangun aplikasi mobile Android yang cepat dan efisien dari satu basis kode.
+
+---
+
+## 📸 Cuplikan Layar
 
 | Beranda (Dashboard) | Kasir (Cashier) | Laporan (Reports) |
-| :---: | :---: | :---: |
+|:---:|:---:|:---:|
 | ![Dashboard](assets/images/screenshots/dashboard.png) | ![Cashier](assets/images/screenshots/cashier.png) | ![Reports](assets/images/screenshots/reports.png) |
 
 ---
 
-## 🛠️ Teknologi yang Digunakan
+## 🚀 Cara Menjalankan di Lokal
 
-- **Framework**: [Flutter](https://flutter.dev)
-- **Bahasa**: [Dart](https://dart.dev)
-- **Database**: [SQLite](https://sqlite.org) (Penyimpanan Lokal)
-- **State Management**: [Provider](https://pub.dev/packages/provider)
-- **UI Components**: [Google Fonts](https://fonts.google.com), [FL Chart](https://pub.dev/packages/fl_chart)
-- **Hardware**: [Print Bluetooth Thermal](https://pub.dev/packages/print_bluetooth_thermal)
+### ✅ Prasyarat
+
+Pastikan komputer kamu sudah terinstal:
+
+- [Flutter SDK](https://docs.flutter.dev/get-started/install) (versi stable terbaru)
+- [Android Studio](https://developer.android.com/studio) atau [VS Code](https://code.visualstudio.com/) dengan ekstensi Flutter & Dart
+- Perangkat Android fisik (API Level 21+) atau emulator Android
 
 ---
 
-## 🚀 Memulai (Getting Started)
+### 📦 Langkah Instalasi
 
-### Prasyarat
+**1. Clone repository**
+```bash
+git clone https://github.com/MuhammadIsakiPrananda1/pos-kopi-jalanan.git
+```
 
-- Flutter SDK (Versi Terbaru)
-- Android Studio / VS Code
-- Perangkat Android (API 21+)
+**2. Masuk ke direktori project**
+```bash
+cd pos-kopi-jalanan
+```
 
-### Instalasi
+**3. Ambil semua dependencies**
+```bash
+flutter pub get
+```
 
-1. **Clone repository**
-   ```bash
-   git clone https://github.com/MuhammadIsakiPrananda1/pos-kopi-jalanan.git
-   ```
+**4. Periksa konfigurasi Flutter (opsional tapi disarankan)**
+```bash
+flutter doctor
+```
 
-2. **Masuk ke direktori project**
-   ```bash
-   cd pos-kopi-jalanan
-   ```
+**5. Jalankan aplikasi ke perangkat / emulator**
+```bash
+flutter run
+```
 
-3. **Ambil dependencies**
-   ```bash
-   flutter pub get
-   ```
-
-4. **Jalankan aplikasi**
-   ```bash
-   flutter run
-   ```
+> 💡 **Tips:** Pastikan perangkat Android sudah terhubung lewat USB dan **USB Debugging** telah diaktifkan di menu *Developer Options*, atau gunakan emulator yang sudah berjalan di Android Studio.
 
 ---
 
 ## 📄 Lisensi
 
-Proyek ini dilisensikan di bawah Lisensi MIT - lihat file [LICENSE](LICENSE) untuk detailnya.
+Proyek ini dilisensikan di bawah **Lisensi MIT** — lihat file [LICENSE](LICENSE) untuk detail selengkapnya.
+
+---
 
 ## 👨‍💻 Pengembang
 
@@ -80,4 +110,5 @@ Proyek ini dilisensikan di bawah Lisensi MIT - lihat file [LICENSE](LICENSE) unt
 - Studio: **NEVERLAND STUDIO**
 
 ---
-Dikembangkan dengan ❤️ oleh Neverland Studio.
+
+<p align="center">Dikembangkan dengan ❤️ oleh <strong>Neverland Studio</strong></p>

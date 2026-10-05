@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart' hide Transaction;
 import 'package:path/path.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter/foundation.dart';
 import '../models/product.dart';
 import '../models/transaction.dart';
 import '../models/transaction_item.dart';
@@ -107,6 +108,11 @@ class DatabaseHelper {
   Future<void> deleteProduct(String id) async {
     final db = await database;
     await db.delete('products', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> clearAllProducts() async {
+    final db = await database;
+    await db.delete('products');
   }
 
   // ============ TRANSACTIONS ============
@@ -217,6 +223,50 @@ class DatabaseHelper {
     ''', [from.toIso8601String()]);
   }
 
+  Future<List<Map<String, dynamic>>> getDailySoldItems({int? days}) async {
+    final db = await database;
+    
+    // RESCUE logic stays the same...
+    try {
+      final orphaned = await db.query('transaction_items', where: "transaction_id = '' OR transaction_id IS NULL");
+      if (orphaned.isNotEmpty) {
+        final emptyTxns = await db.rawQuery('''
+          SELECT id FROM transactions t
+          WHERE NOT EXISTS (SELECT 1 FROM transaction_items ti WHERE ti.transaction_id = t.id)
+          ORDER BY created_at DESC LIMIT 1
+        ''');
+        if (emptyTxns.isNotEmpty) {
+          final targetId = emptyTxns.first['id'] as String;
+          await db.update('transaction_items', {'transaction_id': targetId}, 
+              where: "transaction_id = '' OR transaction_id IS NULL");
+        }
+      }
+    } catch (e) {
+      debugPrint('Rescue orphaned items failed: $e');
+    }
+
+    String whereClause = "";
+    List<dynamic> whereArgs = [];
+    if (days != null) {
+      final from = DateTime.now().subtract(Duration(days: days));
+      whereClause = "WHERE t.created_at >= ?";
+      whereArgs = [from.toIso8601String()];
+    }
+
+    return await db.rawQuery('''
+      SELECT 
+        DATE(t.created_at) as sale_date,
+        ti.product_name,
+        SUM(ti.quantity) as total_sold,
+        SUM(ti.price * ti.quantity) as total_revenue
+      FROM transaction_items ti
+      INNER JOIN transactions t ON t.id = ti.transaction_id
+      $whereClause
+      GROUP BY sale_date, ti.product_name
+      ORDER BY sale_date DESC, total_sold DESC
+    ''', whereArgs);
+  }
+
   // ============ FINANCE ============
   Future<void> insertFinanceRecord(FinanceRecord record) async {
     final db = await database;
@@ -268,5 +318,13 @@ class DatabaseHelper {
       'income': (result.first['manual_income'] as num).toDouble() + totalSales,
       'expense': (result.first['total_expense'] as num).toDouble(),
     };
+  }
+
+  Future<void> clearAllTransactions() async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('transaction_items');
+      await txn.delete('transactions');
+    });
   }
 }

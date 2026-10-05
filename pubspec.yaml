@@ -1,7 +1,7 @@
 name: kopi_jalanan_gank
 description: Premium Digital Cashier (POS) for KOPI JALANAN GANK - Fast, Sleek, and Offline-First.
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.2.0+1
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -17,10 +17,10 @@ dependencies:
   fl_chart: ^0.69.0
   shared_preferences: ^2.3.2
   uuid: ^4.4.2
-  permission_handler: ^11.3.1
   audioplayers: ^6.1.0
   flutter_slidable: ^3.1.1
-  print_bluetooth_thermal: ^1.0.12
+  blue_thermal_printer: ^1.2.3
+  esc_pos_utils_plus: ^2.0.4
 
 dev_dependencies:
   flutter_test:
